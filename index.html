@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8" />
+    <title>Photo Viewer</title>
+
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <!-- SEO -->
+    <meta name="application-name" content="Photo Viewer" />
+    <meta name="author" content="Kyle Amoroso" />
+    <meta
+      name="description"
+      content="View and manage photos in your browser."
+    />
+    <meta name="keywords" content="png,metadata,viewer,reader" />
+    <meta name="version" content="0.0.1" />
+    <meta property="og:title" content="Photo Viewer" />
+    <meta property="og:type" content="website" />
+    <meta
+      property="og:url"
+      content="https://kamoroso94.github.io/png-reader/"
+    />
+    <meta
+      property="og:description"
+      content="View and manage photos in your browser."
+    />
+
+    <script type="module" src="main.js"></script>
+  </head>
+
+  <body>
+    <label for="image-picker"> Pick an photo to read: </label>
+    <input type="file" accept="image/png" id="image-picker" />
+    <output
+      id="text-record"
+      style="font-family: monospace; white-space: pre-wrap"
+    ></output>
+  </body>
+</html>

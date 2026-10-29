@@ -1,2 +1,3 @@
-# photo-viewer
-Application for viewing photos and their metadata.
+# Photo Viewer
+
+View and manage photos in your browser.
