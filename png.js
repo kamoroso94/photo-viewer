@@ -1,5 +1,9 @@
 import {BaseChunk, StandardChunkNameEnum} from './chunks/base-chunk.js';
-import {TextChunk, TEXT_CHUNK_NAMES} from './chunks/text-chunk.js';
+import {Latin1TextChunk} from './chunks/latin1-text-chunk.js';
+import {TEXT_CHUNK_NAMES} from './chunks/text-chunk.js';
+import {Utf8TextChunk} from './chunks/utf8-text-chunk.js';
+
+/** @import {TextChunk} from './chunks/text-chunk.js'; */
 
 // See https://www.libpng.org/pub/png/spec/1.2/PNG-Structure.html#PNG-file-signature.
 const SIGNATURE = Uint8Array.of(137, 80, 78, 71, 13, 10, 26, 10);
@@ -44,24 +48,24 @@ export class PNG {
     const chunkIterator = this.#getChunks(buffer, offset);
     consumeHeader(chunkIterator);
 
-    /** @type {ReadonlySet<string>} */
-    const allTextChunkNames = TEXT_CHUNK_NAMES.union(
-      new Set([StandardChunkNameEnum.COMPRESSED_TEXT]),
-    );
-
     /** @type {Record<string, string>} */
     const textRecord = {};
     for (
-      let chunk = consumeUntil(chunkIterator, allTextChunkNames);
+      let chunk = consumeUntil(chunkIterator, TEXT_CHUNK_NAMES);
       !!chunk;
-      chunk = consumeUntil(chunkIterator, allTextChunkNames)
+      chunk = consumeUntil(chunkIterator, TEXT_CHUNK_NAMES)
     ) {
+      // TODO: Handle compressed text.
       if (chunk.type.name === StandardChunkNameEnum.COMPRESSED_TEXT) {
         console.debug('Skipping over compressed text chunk');
         continue;
       }
 
-      const textChunk = new TextChunk(chunk);
+      /** @type {TextChunk} */
+      const textChunk =
+        chunk.type.name === StandardChunkNameEnum.LATIN1_TEXT
+          ? new Latin1TextChunk(chunk)
+          : new Utf8TextChunk(chunk);
       // TODO: Handle duplicate text chunk keywords.
       textRecord[textChunk.keyword] = textChunk.text;
     }

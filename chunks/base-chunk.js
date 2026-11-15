@@ -1,5 +1,6 @@
 import {crc} from '../crc.js';
 import {isInRange} from '../numeric-range.js';
+import {decodeLatin1} from '../strings.js';
 
 /** @import {NumericRange} from '../numeric-range.js'; */
 
@@ -15,7 +16,7 @@ import {isInRange} from '../numeric-range.js';
 /**
  * Names of the standard chunks.
  * @typedef {(
- *   'IHDR' | 'PLTE' | 'IDAT' | 'IEND' | 'tIME' | 'tEXt' | 'zTXt' | 'iTXt'
+ *   'IHDR' | 'PLTE' | 'IDAT' | 'IEND' | 'tIME' | 'tEXt' | 'iTXt' | 'zTXt'
  * )} StandardChunkName
  */
 
@@ -34,8 +35,6 @@ export const StandardChunkNameEnum = /** @type {const} */ ({
   /** @type {ReadonlySet<StandardChunkName>} */
   values: new Set(['IHDR', 'tIME', 'tEXt', 'zTXt', 'iTXt', 'IEND']),
 });
-
-const LATIN1_DECODER = new TextDecoder('latin1');
 
 const CHUNK_LENGTH_SIZE = 4;
 const CHUNK_TYPE_SIZE = 4;
@@ -160,7 +159,7 @@ export class BaseChunk {
     }
 
     return {
-      name: LATIN1_DECODER.decode(bytes),
+      name: decodeLatin1(bytes),
       ancillary: !!(bytes[0] & CHUNK_TYPE_PROPERTY_MASK),
       private: !!(bytes[1] & CHUNK_TYPE_PROPERTY_MASK),
       safeToCopy: !!(bytes[3] & CHUNK_TYPE_PROPERTY_MASK),
