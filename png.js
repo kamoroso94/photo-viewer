@@ -77,6 +77,8 @@ export class PNG {
    * Validates the buffer starts with the PNG signature.
    * @param {ArrayBuffer} buffer
    * @returns {void}
+   * @throws {RangeError} If the PNG file signature is incomplete.
+   * @throws {TypeError} If the PNG file signature does not match.
    */
   #validateSignature(buffer) {
     if (buffer.byteLength < SIGNATURE.byteLength) {
@@ -97,6 +99,7 @@ export class PNG {
    * @param {ArrayBuffer} buffer
    * @param {number} offset
    * @yields {BaseChunk}
+   * @throws {RangeError} If data remains in `buffer` after parsing all chunks.
    */
   *#getChunks(buffer, offset) {
     while (offset < buffer.byteLength) {
@@ -114,6 +117,8 @@ export class PNG {
  * Verifies the next chunk in `chunkIterator` is a header chunk and returns it.
  * @param {Iterator<BaseChunk>} chunkIterator
  * @returns {BaseChunk}
+ * @throws {TypeError} If there are no chunks.
+ * @throws {SyntaxError} If the first chunk is not the header.
  */
 function consumeHeader(chunkIterator) {
   const {value: chunk, done} = chunkIterator.next();
@@ -131,6 +136,8 @@ function consumeHeader(chunkIterator) {
  * @param {Iterator<BaseChunk>} chunkIterator
  * @param {ReadonlySet<string>} soughtNames
  * @returns {(BaseChunk | undefined)}
+ * @throws {SyntaxError} If the iterator finishes before encountering an end
+ *     chunk.
  */
 function consumeUntil(chunkIterator, soughtNames) {
   for (
@@ -138,7 +145,7 @@ function consumeUntil(chunkIterator, soughtNames) {
     chunk.type.name !== StandardChunkNameEnum.END;
     {value: chunk, done} = chunkIterator.next()
   ) {
-    if (done) throw new Error('Unexpected end of input');
+    if (done) throw new SyntaxError('Unexpected end of input');
     if (soughtNames.has(chunk.type.name)) {
       return chunk;
     }

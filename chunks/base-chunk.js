@@ -91,6 +91,8 @@ export class BaseChunk {
   /**
    * @param {ArrayBuffer} buffer
    * @param {number} [offset=0]
+   * @throws {RangeError} If there is insufficient size in `buffer` beginning
+   *     from `offset` to decode a minimal chunk.
    */
   constructor(buffer, offset = 0) {
     const view = new DataView(buffer, offset);
@@ -120,6 +122,9 @@ export class BaseChunk {
    * Extracts the data length from the chunk.
    * @param {DataView} view
    * @returns {number}
+   * @throws {RangeError} If the chunk data length is out of bounds.
+   * @throws {RangeError} If the chunk data length exceeds the remaining size of
+   *     the buffer.
    */
   #parseDataLength(view) {
     const dataLength = view.getUint32(0);
@@ -137,6 +142,8 @@ export class BaseChunk {
    * @param {DataView} view
    * @param {number} byteOffset
    * @returns {ChunkType}
+   * @throws {RangeError} If the chunk type is outside the acceptable range.
+   * @throws {TypeError} If the reserved bit is set, which is unsupported.
    */
   #parseType(view, byteOffset) {
     const bytes = new Uint8Array(
@@ -171,6 +178,7 @@ export class BaseChunk {
    * @param {DataView} view
    * @param {number} byteOffset
    * @returns {number}
+   * @throws {Error} If the chunk's CRC does not match.
    */
   #parseCrc(view, byteOffset) {
     const putativeCrc = view.getUint32(byteOffset);

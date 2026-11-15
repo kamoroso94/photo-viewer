@@ -47,7 +47,12 @@ export class Utf8TextChunk {
     return this.#text;
   }
 
-  /** @param {BaseChunk} chunk */
+  /**
+   * @param {BaseChunk} chunk
+   * @throws {TypeError} If `chunk` is not a UTF-8 text chunk.
+   * @throws {RangeError} If there is insufficient size to decode the chunk
+   *     data.
+   */
   constructor(chunk) {
     if (chunk.type.name !== StandardChunkNameEnum.UTF8_TEXT) {
       throw new TypeError('Chunk is not a UTF-8 text chunk');

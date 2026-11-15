@@ -31,7 +31,12 @@ export class Latin1TextChunk {
     return this.#text;
   }
 
-  /** @param {BaseChunk} chunk */
+  /**
+   * @param {BaseChunk} chunk
+   * @throws {TypeError} If `chunk` is not a Latin-1 text chunk.
+   * @throws {RangeError} If there is insufficient size to decode the chunk
+   *     data.
+   */
   constructor(chunk) {
     if (chunk.type.name !== StandardChunkNameEnum.LATIN1_TEXT) {
       throw new TypeError('Chunk is not a Latin-1 text chunk');
