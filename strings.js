@@ -6,7 +6,7 @@ const LATIN1_DECODER = new TextDecoder('latin1');
 const UTF8_DECODER = new TextDecoder('utf8');
 
 /** The null byte. */
-export const NUL = 0;
+const NUL = 0;
 
 /**
  * Extracts a C-style, null-terminated string from the `buffer` beginning at
@@ -20,28 +20,28 @@ export const NUL = 0;
  * @throws {RangeError} If the string falls outside the given `range`.
  */
 export function getCString(buffer, offset, range) {
-  const index = buffer.indexOf(NUL, offset);
-  if (index < 0) {
+  const endIndex = buffer.indexOf(NUL, offset);
+  if (endIndex < 0) {
     throw new TypeError('String missing null terminator');
   }
-  if (range && !isInRange(index - offset, range)) {
+  if (range && !isInRange(endIndex - offset, range)) {
     throw new RangeError('String size out of bounds');
   }
-  return buffer.subarray(offset, index);
+  return buffer.subarray(offset, endIndex);
 }
 
 /**
  * Extracts a string from the `buffer` beginning at `offset`.
  * @param {Uint8Array} buffer
- * @param {number} byteOffset
+ * @param {number} offset
  * @returns {Uint8Array}
  * @throws {TypeError} If the string contains a null byte.
  */
-export function getString(buffer, byteOffset) {
-  if (buffer.includes(NUL, byteOffset)) {
+export function getString(buffer, offset) {
+  if (buffer.includes(NUL, offset)) {
     throw new TypeError('Unexpected null byte in string');
   }
-  return buffer.subarray(byteOffset);
+  return buffer.subarray(offset);
 }
 
 /**
