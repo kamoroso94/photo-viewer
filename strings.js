@@ -8,6 +8,8 @@ const UTF8_DECODER = new TextDecoder('utf8');
 /** The null byte. */
 const NUL = 0;
 
+const LATIN1_MASK = 0xff;
+
 /**
  * Extracts a C-style, null-terminated string from the `buffer` beginning at
  * `offset`, optionally checking if the length falls outside the given `range`
@@ -51,6 +53,29 @@ export function getString(buffer, offset) {
  */
 export function decodeLatin1(buffer) {
   return LATIN1_DECODER.decode(buffer);
+}
+
+/**
+ * Encodes `text` into a new buffer using the Latin-1 encoding standard.
+ * @param {string} text
+ * @returns {Uint8Array}
+ */
+export function encodeLatin1(text) {
+  return Uint8Array.from(
+    text,
+    (code) => (code.codePointAt(0) ?? NUL) & LATIN1_MASK,
+  );
+}
+
+/**
+ * Encodes `text` into `buffer` beginning at `byteOffset` using the Latin-1
+ * encoding standard.
+ * @param {string} text
+ * @param {Uint8Array} buffer
+ * @param {number} [byteOffset=0]
+ */
+export function encodeLatin1Into(text, buffer, byteOffset = 0) {
+  buffer.set(encodeLatin1(text), byteOffset);
 }
 
 /**

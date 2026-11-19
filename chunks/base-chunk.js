@@ -1,8 +1,5 @@
 import {crc} from '../crc.js';
-import {isInRange} from '../numeric-range.js';
-import {decodeLatin1} from '../strings.js';
-
-/** @import {NumericRange} from '../numeric-range.js'; */
+import {decodeLatin1, encodeLatin1, encodeLatin1Into} from '../strings.js';
 
 /**
  * Represents the type of chunk, including derived fields.
@@ -43,11 +40,6 @@ const MIN_CHUNK_SIZE = CHUNK_LENGTH_SIZE + CHUNK_TYPE_SIZE + CHUNK_CRC_SIZE;
 const MAX_CHUNK_DATA_LENGTH = 2 ** 31;
 const CHUNK_TYPE_PROPERTY_MASK = 1 << 5;
 
-/** @type {NumericRange} */
-const CHUNK_TYPE_BYTE_LOWER_RANGE = {min: 65, max: 90};
-/** @type {NumericRange} */
-const CHUNK_TYPE_BYTE_UPPER_RANGE = {min: 97, max: 122};
-
 /** Basic outline of a chunk in a PNG file. */
 export class BaseChunk {
   /**
@@ -62,7 +54,7 @@ export class BaseChunk {
   /** @type {Uint8Array} */
   #data;
 
-  /** @type {number} */
+  /** @type {(number | undefined)} */
   #crc;
 
   /**
@@ -83,116 +75,180 @@ export class BaseChunk {
     return this.#data;
   }
 
+  // TODO: Add tracking to invalidate cache whenever `data` changes.
   /** @returns {number} */
   get crc() {
-    return this.#crc;
+    if (this.#crc !== undefined) return this.#crc;
+
+    const buffer = new Uint8Array(CHUNK_TYPE_SIZE + this.#data.byteLength);
+    encodeLatin1Into(this.#type.name, buffer);
+    buffer.set(this.#data, CHUNK_TYPE_SIZE);
+    return (this.#crc = crc(buffer));
   }
 
   /**
+   * @param {string} name
+   * @param {Uint8Array} data
+   * @param {number} [crc]
+   */
+  constructor(name, data, crc) {
+    this.#type = parseChunkType(name);
+    this.#data = data;
+    this.#length = data.byteLength;
+    this.#crc = crc;
+  }
+
+  /**
+   * Decodes a `BaseChunk` from the `buffer` beginning at the given
+   * `byteOffset`.
    * @param {ArrayBuffer} buffer
-   * @param {number} [offset=0]
+   * @param {number} byteOffset
+   * @returns {BaseChunk}
    * @throws {RangeError} If there is insufficient size in `buffer` beginning
-   *     from `offset` to decode a minimal chunk.
+   *     from `byteOffset` to decode a minimal chunk.
+   * @throws {RangeError} When the given `buffer` is not fully consumed after
+   *     decoding.
    */
-  constructor(buffer, offset = 0) {
-    const view = new DataView(buffer, offset);
-    if (view.byteLength < MIN_CHUNK_SIZE) {
+  static decode(buffer, byteOffset) {
+    return BaseChunk.#decode(buffer, byteOffset, /* checkFinished= */ true);
+  }
+
+  /**
+   * Decodes a `BaseChunk` from the `buffer` beginning at the given
+   * `byteOffset`.
+   * @param {ArrayBuffer} buffer
+   * @param {number} byteOffset
+   * @returns {BaseChunk}
+   * @throws {RangeError} If there is insufficient size in `buffer` beginning
+   *     from `byteOffset` to decode a minimal chunk.
+   */
+  static decodeFrom(buffer, byteOffset) {
+    return BaseChunk.#decode(buffer, byteOffset, /* checkFinished= */ false);
+  }
+
+  /**
+   * Decodes a `BaseChunk` from the `buffer` beginning at the given
+   * `byteOffset`.
+   * @param {ArrayBuffer} buffer
+   * @param {number} byteOffset
+   * @param {boolean} checkFinished
+   * @returns {BaseChunk}
+   * @throws {RangeError} If there is insufficient size in `buffer` beginning
+   *     from `byteOffset` to decode a minimal chunk.
+   * @throws {RangeError} When the given `buffer` is not fully consumed after
+   *     decoding and `checkFinished` is set.
+   */
+  static #decode(buffer, byteOffset, checkFinished) {
+    if (buffer.byteLength - byteOffset < MIN_CHUNK_SIZE) {
       throw new RangeError('Insufficient buffer size');
     }
 
-    let chunkOffset = 0;
-    this.#length = this.#parseDataLength(view);
-    chunkOffset += CHUNK_LENGTH_SIZE;
+    const length = decodeDataLength(buffer, byteOffset);
+    byteOffset += CHUNK_LENGTH_SIZE;
 
-    this.#type = this.#parseType(view, chunkOffset);
-    chunkOffset += CHUNK_TYPE_SIZE;
-
-    this.#data = new Uint8Array(
-      view.buffer,
-      view.byteOffset + chunkOffset,
-      this.#length,
+    const nameStart = byteOffset;
+    const name = decodeLatin1(
+      new Uint8Array(buffer, nameStart, CHUNK_TYPE_SIZE),
     );
-    chunkOffset += this.#length;
+    byteOffset += CHUNK_TYPE_SIZE;
 
-    this.#crc = this.#parseCrc(view, chunkOffset);
-    chunkOffset += CHUNK_CRC_SIZE;
-  }
+    const data = new Uint8Array(buffer, byteOffset, length);
+    byteOffset += length;
 
-  /**
-   * Extracts the data length from the chunk.
-   * @param {DataView} view
-   * @returns {number}
-   * @throws {RangeError} If the chunk data length is out of bounds.
-   * @throws {RangeError} If the chunk data length exceeds the remaining size of
-   *     the buffer.
-   */
-  #parseDataLength(view) {
-    const dataLength = view.getUint32(0);
-    if (dataLength > MAX_CHUNK_DATA_LENGTH) {
-      throw new RangeError('Chunk data length too large');
-    }
-    if (view.byteLength - MIN_CHUNK_SIZE < dataLength) {
-      throw new RangeError('Insufficient buffer size');
-    }
-    return dataLength;
-  }
-
-  /**
-   * Extracts the chunk type.
-   * @param {DataView} view
-   * @param {number} byteOffset
-   * @returns {ChunkType}
-   * @throws {RangeError} If the chunk type is outside the acceptable range.
-   * @throws {TypeError} If the reserved bit is set, which is unsupported.
-   */
-  #parseType(view, byteOffset) {
-    const bytes = new Uint8Array(
-      view.buffer,
-      view.byteOffset + byteOffset,
-      CHUNK_TYPE_SIZE,
+    const crc = decodeCrc(
+      buffer,
+      /* dataStart= */ nameStart,
+      /* crcStart= */ byteOffset,
     );
-    if (
-      !bytes.every(
-        (x) =>
-          isInRange(x, CHUNK_TYPE_BYTE_LOWER_RANGE) ||
-          isInRange(x, CHUNK_TYPE_BYTE_UPPER_RANGE),
-      )
-    ) {
-      throw new RangeError('Chunk type bytes out of range');
+    byteOffset += CHUNK_CRC_SIZE;
+
+    if (checkFinished && byteOffset !== buffer.byteLength) {
+      throw new RangeError('Unexpected data after reading chunks');
     }
 
-    if (bytes[2] & CHUNK_TYPE_PROPERTY_MASK) {
-      throw new TypeError('Unsupported reserved bit');
-    }
+    return new BaseChunk(name, data, crc);
+  }
+}
 
-    return {
-      name: decodeLatin1(bytes),
-      ancillary: !!(bytes[0] & CHUNK_TYPE_PROPERTY_MASK),
-      private: !!(bytes[1] & CHUNK_TYPE_PROPERTY_MASK),
-      safeToCopy: !!(bytes[3] & CHUNK_TYPE_PROPERTY_MASK),
-    };
+/**
+ * Extracts the data length for the chunk from the `buffer` beginning at
+ * `byteOffset`.
+ * @param {ArrayBuffer} buffer
+ * @param {number} [byteOffset=0]
+ * @returns {number}
+ * @throws {RangeError} If the chunk data length is out of bounds.
+ * @throws {RangeError} If the chunk data length exceeds the remaining size of
+ *     the buffer.
+ */
+function decodeDataLength(buffer, byteOffset = 0) {
+  const dataLength = new DataView(
+    buffer,
+    byteOffset,
+    CHUNK_LENGTH_SIZE,
+  ).getUint32(0);
+
+  if (dataLength > MAX_CHUNK_DATA_LENGTH) {
+    throw new RangeError('Chunk data length too large');
+  }
+  if (buffer.byteLength - byteOffset - MIN_CHUNK_SIZE < dataLength) {
+    throw new RangeError('Insufficient buffer size');
   }
 
-  /**
-   * Extracts and checks the CRC for the chunk.
-   * @param {DataView} view
-   * @param {number} byteOffset
-   * @returns {number}
-   * @throws {Error} If the chunk's CRC does not match.
-   */
-  #parseCrc(view, byteOffset) {
-    const putativeCrc = view.getUint32(byteOffset);
-    const chunkBytesSize = CHUNK_TYPE_SIZE + this.#length;
-    const chunkBytes = new Uint8Array(
-      view.buffer,
-      view.byteOffset + CHUNK_LENGTH_SIZE,
-      chunkBytesSize,
-    );
-    const chunkCrc = crc(chunkBytes);
-    if (putativeCrc !== chunkCrc) {
-      throw new Error('CRC does not match chunk');
-    }
+  return dataLength;
+}
 
-    return putativeCrc;
+/**
+ * Parses the chunk type from the `name`.
+ * @param {string} name
+ * @returns {ChunkType}
+ * @throws {RangeError} If the chunk type `name` is not exactly four letters.
+ * @throws {TypeError} If the reserved bit is set, which is unsupported.
+ */
+function parseChunkType(name) {
+  if (!/^[A-Za-z]{4}$/.test(name)) {
+    throw new RangeError('Chunk type must consist of exactly four letters');
   }
+
+  const bytes = encodeLatin1(name);
+  if (bytes[2] & CHUNK_TYPE_PROPERTY_MASK) {
+    throw new TypeError('Unsupported reserved bit');
+  }
+
+  return {
+    name,
+    ancillary: !!(bytes[0] & CHUNK_TYPE_PROPERTY_MASK),
+    private: !!(bytes[1] & CHUNK_TYPE_PROPERTY_MASK),
+    safeToCopy: !!(bytes[3] & CHUNK_TYPE_PROPERTY_MASK),
+  };
+}
+
+/**
+ * Extracts the CRC for the chunk from `buffer` beginning at `crcStart` against
+ * the data leading up to it from `dataStart`.
+ * @param {ArrayBuffer} buffer
+ * @param {number} dataStart
+ * @param {number} crcStart
+ * @returns {number}
+ * @throws {RangeError} When `dataStart` does not precede `crcStart` or either
+ *     offset is out of bounds.
+ * @throws {Error} If the chunk's CRC does not match.
+ */
+function decodeCrc(buffer, dataStart, crcStart) {
+  if (dataStart >= crcStart) {
+    throw new RangeError('CRC index must follow data index');
+  }
+  if (crcStart + CHUNK_CRC_SIZE > buffer.byteLength) {
+    throw new RangeError('CRC index out of bounds');
+  }
+
+  const putativeCrc = new DataView(buffer, crcStart, CHUNK_CRC_SIZE).getUint32(
+    0,
+  );
+  const chunkBytes = new Uint8Array(buffer, dataStart, crcStart - dataStart);
+  const chunkCrc = crc(chunkBytes);
+  if (putativeCrc !== chunkCrc) {
+    throw new Error('CRC does not match chunk');
+  }
+
+  return putativeCrc;
 }

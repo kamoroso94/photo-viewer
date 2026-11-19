@@ -13,6 +13,6 @@ input.addEventListener('change', async () => {
 
   const [file] = input.files;
   const buffer = await file.arrayBuffer();
-  const image = new PNG(buffer);
+  const image = PNG.decode(buffer);
   output.textContent = JSON.stringify(image.textRecord, null, 2);
 });

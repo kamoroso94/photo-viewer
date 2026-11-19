@@ -24,9 +24,9 @@ export class PNG {
     return this.#textRecord;
   }
 
-  /** @param {ArrayBuffer} buffer */
-  constructor(buffer) {
-    this.#textRecord = this.#parseTextRecord(buffer);
+  /** @param {Iterable<BaseChunk>} chunks */
+  constructor(chunks) {
+    this.#textRecord = this.#parseTextRecord(chunks);
   }
 
   /** @returns {Blob} */
@@ -37,15 +37,11 @@ export class PNG {
   /**
    * Extracts all the text chunks in the image and merges them into a single
    * record.
-   * @param {ArrayBuffer} buffer
+   * @param {Iterable<BaseChunk>} chunks
    * @returns {Record<string, string>}
    */
-  #parseTextRecord(buffer) {
-    let offset = 0;
-    this.#validateSignature(buffer);
-    offset += SIGNATURE.byteLength;
-
-    const chunkIterator = this.#getChunks(buffer, offset);
+  #parseTextRecord(chunks) {
+    const chunkIterator = Iterator.from(chunks);
     consumeHeader(chunkIterator);
 
     /** @type {Record<string, string>} */
@@ -74,42 +70,84 @@ export class PNG {
   }
 
   /**
-   * Validates the buffer starts with the PNG signature.
+   * Decodes a PNG from the `buffer` beginning at `byteOffset`.
    * @param {ArrayBuffer} buffer
-   * @returns {void}
-   * @throws {RangeError} If the PNG file signature is incomplete.
-   * @throws {TypeError} If the PNG file signature does not match.
+   * @param {number} [byteOffset=0]
+   * @returns {PNG}
+   * @throws {RangeError} When the given `buffer` is not fully consumed after
+   *     decoding.
    */
-  #validateSignature(buffer) {
-    if (buffer.byteLength < SIGNATURE.byteLength) {
-      throw new RangeError('Incomplete or missing file signature');
-    }
-    const putativeSignature = new Uint8Array(
-      buffer,
-      /* byteOffset= */ 0,
-      SIGNATURE.byteLength,
-    );
-    if (!putativeSignature.every((x, i) => x === SIGNATURE[i])) {
-      throw new TypeError('File signature does not match that of a PNG');
-    }
+  static decode(buffer, byteOffset = 0) {
+    return PNG.#decode(buffer, byteOffset, /* checkFinished= */ true);
   }
 
   /**
-   * Iterates over the chunks in the `buffer`, starting at `offset`.
+   * Decodes a PNG from the `buffer` beginning at `byteOffset`.
    * @param {ArrayBuffer} buffer
-   * @param {number} offset
-   * @yields {BaseChunk}
-   * @throws {RangeError} If data remains in `buffer` after parsing all chunks.
+   * @param {number} [byteOffset=0]
+   * @returns {PNG}
    */
-  *#getChunks(buffer, offset) {
-    while (offset < buffer.byteLength) {
-      const chunk = new BaseChunk(buffer, offset);
-      yield chunk;
-      offset += chunk.size;
-    }
-    if (offset !== buffer.byteLength) {
-      throw new RangeError('Unexpected data after reading chunks');
-    }
+  static decodeFrom(buffer, byteOffset = 0) {
+    return PNG.#decode(buffer, byteOffset, /* checkFinished= */ false);
+  }
+
+  /**
+   * Decodes a PNG from the `buffer` beginning at `byteOffset`.
+   * @param {ArrayBuffer} buffer
+   * @param {number} byteOffset
+   * @param {boolean} checkFinished
+   * @returns {PNG}
+   * @throws {RangeError} When the given `buffer` is not fully consumed after
+   *     decoding and `checkFinished` is set.
+   */
+  static #decode(buffer, byteOffset, checkFinished) {
+    validateSignature(buffer, byteOffset);
+    byteOffset += SIGNATURE.byteLength;
+
+    return new PNG(decodeChunks(buffer, byteOffset, checkFinished));
+  }
+}
+
+/**
+ * Validates the `buffer` starts with the PNG signature at the given
+ * `byteOffset`.
+ * @param {ArrayBuffer} buffer
+ * @param {number} byteOffset
+ * @returns {void}
+ * @throws {RangeError} If the PNG file signature is incomplete.
+ * @throws {TypeError} If the PNG file signature does not match.
+ */
+function validateSignature(buffer, byteOffset) {
+  if (buffer.byteLength - byteOffset < SIGNATURE.byteLength) {
+    throw new RangeError('Incomplete or missing file signature');
+  }
+  const putativeSignature = new Uint8Array(
+    buffer,
+    byteOffset,
+    SIGNATURE.byteLength,
+  );
+  if (!putativeSignature.every((x, i) => x === SIGNATURE[i])) {
+    throw new TypeError('File signature does not match that of a PNG');
+  }
+}
+
+/**
+ * Iterates over the chunks in the `buffer`, starting at `byteOffset`.
+ * @param {ArrayBuffer} buffer
+ * @param {number} byteOffset
+ * @param {boolean} checkFinished
+ * @yields {BaseChunk}
+ * @throws {RangeError} If data remains in `buffer` after parsing all chunks and
+ *     `checkFinished` is set.
+ */
+function* decodeChunks(buffer, byteOffset, checkFinished) {
+  while (byteOffset < buffer.byteLength) {
+    const chunk = BaseChunk.decodeFrom(buffer, byteOffset);
+    yield chunk;
+    byteOffset += chunk.size;
+  }
+  if (checkFinished && byteOffset !== buffer.byteLength) {
+    throw new RangeError('Unexpected data after reading chunks');
   }
 }
 
